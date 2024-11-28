@@ -4,12 +4,9 @@ import threading
 
 import uvicorn
 
-from web import app
 from bot import create_bot
-
-logging.basicConfig(
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO
-)
+from logger import logging
+from web import app
 
 
 def run_web():
@@ -41,10 +38,10 @@ async def bot_main():
     await stop_event.wait()
 
     # 收到停止信号后，正确关闭bot
+    logging.info("Bot has been stopped")
     await application.updater.stop()
     await application.stop()
     await application.shutdown()
-    logging.info("Bot has been stopped")
 
 
 if __name__ == "__main__":
