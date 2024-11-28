@@ -13,7 +13,15 @@ logging.basicConfig(
 
 
 def run_web():
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    config = uvicorn.Config(
+        app=app,
+        host="0.0.0.0",
+        port=8000,
+        log_level="info",
+        reload=False,  # 生产环境设为False
+    )
+    server = uvicorn.Server(config)
+    server.run()
 
 
 def run_bot():
