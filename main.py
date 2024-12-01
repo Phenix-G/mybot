@@ -4,19 +4,32 @@ import threading
 import uvicorn
 
 from bot import create_bot
-from core import logging
-from web import app
+from core import logging, WEB_PORT
+from web import app, stop_web_event
 
 
 def run_web():
     config = uvicorn.Config(
         app=app,
         host="0.0.0.0",
-        port=8000,
+        port=WEB_PORT,
         log_level="info",
-        reload=False,  # 生产环境设为False
+        reload=False,
     )
     server = uvicorn.Server(config)
+
+    # 为web线程创建独立的事件循环
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+
+    async def check_stop():
+        await stop_web_event.wait()  # 等待停止事件
+        server.should_exit = True  # 触发服务器停止
+
+    # 在事件循环中运行检查任务
+    loop.create_task(check_stop())
+
+    # 运行服务器
     server.run()
 
 
