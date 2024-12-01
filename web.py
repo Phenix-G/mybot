@@ -1,19 +1,28 @@
 import asyncio
 import os
+import random
 import sys
 
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 
-from core import logging
+from core import logging, redis_client
 
 app = FastAPI()
 stop_web_event = asyncio.Event()
 
+cache_page = ""
+
 
 @app.get("/")
-async def root():
-    return {"message": "Hello World"}
+async def index():
+    global cache_page
+    result = redis_client.hgetall("page")
+    if result:
+        cache_page = random.choice(list(result.items()))
+        return cache_page
+    else:
+        return cache_page
 
 
 @app.get("/restart")
