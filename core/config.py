@@ -1,7 +1,7 @@
 import os
 
 # Debug模式
-DEBUG = os.environ.get("DEBUG", True)
+DEBUG = os.environ.get("DEBUG", False)
 
 # Redis配置
 REDIS_HOST = os.getenv("REDIS_HOST", "redis")
