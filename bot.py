@@ -1,5 +1,3 @@
-import os
-
 import httpx
 from telegram import Update
 from telegram.ext import (
@@ -10,11 +8,8 @@ from telegram.ext import (
     ContextTypes,
 )
 
-from logger import logging
-
-token = os.getenv(
-    "TELEGRAM_BOT_TOKEN", ""
-)
+from core import logging
+from core.config import TELEGRAM_BOT_TOKEN, WEB_PORT
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -25,7 +20,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def get_web(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
-        response = httpx.get("http://localhost:8000/")
+        response = httpx.get(f"http://localhost:{WEB_PORT}/")
         text = response.text
     except Exception as e:
         logging.error(f"Failed to get web: {e}")
@@ -59,7 +54,7 @@ async def unknown(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 def create_bot(stop_event=None):
-    application = ApplicationBuilder().token(token).build()
+    application = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).build()
 
     # 保存stop_event到application对象中
     application.stop_event = stop_event

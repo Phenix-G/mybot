@@ -1,4 +1,6 @@
 fastapi
 python-telegram-bot
 uvicorn
+redis
+
 

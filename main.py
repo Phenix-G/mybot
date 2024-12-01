@@ -1,11 +1,10 @@
 import asyncio
-import logging
 import threading
 
 import uvicorn
 
 from bot import create_bot
-from logger import logging
+from core import logging
 from web import app
 
 
@@ -44,7 +43,7 @@ async def bot_main():
     await application.shutdown()
 
 
-if __name__ == "__main__":
+def main():
     # 启动web服务作为独立线程
     web_thread = threading.Thread(target=run_web)
     web_thread.daemon = False
@@ -58,3 +57,8 @@ if __name__ == "__main__":
         logging.error(f"Bot exited with error: {e}")
     except KeyboardInterrupt:
         logging.info("Received keyboard interrupt")
+
+
+if __name__ == "__main__":
+    main()
+
