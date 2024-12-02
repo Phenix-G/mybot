@@ -2,6 +2,7 @@ import functools
 from typing import Callable, Any
 
 import httpx
+from sqlmodel import select
 from telegram import Update
 from telegram.ext import (
     filters,
@@ -13,6 +14,9 @@ from telegram.ext import (
 
 from core import logging, redis_client
 from core.config import HUGGINGFACE_URL, TELEGRAM_BOT_TOKEN, WEB_PORT, ADMIN_ID
+from core.db import get_session
+from model.page import Page
+
 
 admin_id = int(redis_client.get("admin") or ADMIN_ID)
 
@@ -29,51 +33,54 @@ def handle_redis_error(func: Callable) -> Callable:
     return wrapper
 
 
-@handle_redis_error
 def set_page(data: str):
-    # name;xxx
+    # name-xxx
     # remove begin and end space
-    data = data.strip().split(";")
-    result = redis_client.hset("page", mapping={data[0]: data[1]})
-    return result
+    data = data.strip().split("-", 1)
+    session = next(get_session())
+    # get page
+    page = session.exec(select(Page).where(Page.name == data[0])).first()
+
+    if page:
+        page.content = data[1]
+    else:
+        page = Page(name=data[0], content=data[1])
+        session.add(page)
+
+    session.commit()
 
 
 @handle_redis_error
 def set_cf_key(key: str):
-    result = redis_client.set("cf_key", key)
-    return result
+    return redis_client.set("cf_key", key)
 
 
 @handle_redis_error
 def set_access_granted_user(user_id: int):
-    result = redis_client.sadd("user", user_id)
-    return result
+    return redis_client.sadd("user", user_id)
 
 
 @handle_redis_error
 def set_huggingface_url(url: str):
-    result = redis_client.set("huggingface_url", url)
-    return result
+    return redis_client.set("huggingface_url", url)
 
 
 @handle_redis_error
 def set_subscription_base(data: str):
-    # cf aaa;huggingface bbb
+    # cf-aaa;huggingface-bbb
     # remove begin and end space
     data = data.strip().split(";")
-    # [cf:aaa,huggingface:bbb]
+    # [cf-aaa,huggingface-bbb]
     subscription = {}
     for item in data:
-        key, value = item.split(" ")
+        key, value = item.split("-", 1)
         subscription[key] = value
-    result = redis_client.hset("subscription_base", mapping=subscription)
-    return result
+    return redis_client.hset("subscription_base", mapping=subscription)
 
 
 @handle_redis_error
 def set_subscription_path(path: str):
-    result = redis_client.set("path", path)
-    return result
+    return redis_client.set("path", path)
 
 
 def get_page():
@@ -205,33 +212,31 @@ async def set(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     command, key, value = data
-    result = False
     try:
         if key == "page":
-            result = set_page(value)
+            set_page(value)
 
         elif key == "cf_key":
-            result = set_cf_key(value)
+            set_cf_key(value)
 
         elif key == "user":
-            result = set_access_granted_user(value)
+            set_access_granted_user(value)
 
         elif key == "huggingface":
-            result = set_huggingface_url(value)
+            set_huggingface_url(value)
 
         elif key == "subscription":
-            result = set_subscription_base(value)
+            set_subscription_base(value)
 
         elif key == "path":
-            result = set_subscription_path(value)
+            set_subscription_path(value)
 
     except RuntimeError as e:
         await context.bot.send_message(
-            chat_id=update.effective_chat.id, text=f"Error: {str(e)}"
+            chat_id=update.effective_chat.id, text=f"Error: {key} {str(e)}"
         )
     await context.bot.send_message(
-        chat_id=update.effective_chat.id,
-        text=f"Successfully set {key}" if result else f"Failed to set {key}",
+        chat_id=update.effective_chat.id, text=f"Successfully set {key}"
     )
 
 
@@ -312,7 +317,7 @@ async def help(update: Update, context: ContextTypes.DEFAULT_TYPE):
 /getid - 获取telegram id
 /set <key> <value> - 设置配置
      <key> - page, cf_key, user, huggingface, subscription, path
-     page -> name;xxx
+     page -> name-xxx
      cf_key -> xxx
      user -> user_id
      huggingface -> url
