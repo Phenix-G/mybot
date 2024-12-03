@@ -40,6 +40,9 @@ async def lifespan(app: FastAPI):
 
 
 def keep_web_alive():
+    # 检查停止事件
+    if stop_web_event.is_set():
+        return
     try:
         httpx.get(f"http://127.0.0.1:{WEB_PORT}/")
     except Exception as e:
@@ -47,6 +50,9 @@ def keep_web_alive():
 
 
 def keep_database_alive():
+    # 检查停止事件
+    if stop_web_event.is_set():
+        return
     try:
         redis_client.ping()
 
