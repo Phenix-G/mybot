@@ -60,6 +60,16 @@ def keep_database_alive():
         logging.error(f"Error: {e}")
 
 
+# 添加一个新的函数来处理关闭
+def shutdown_scheduler():
+    if scheduler.running:
+        try:
+            scheduler.shutdown(wait=False)
+            logging.info("Scheduler shutdown completed")
+        except Exception as e:
+            logging.error(f"Error shutting down scheduler: {e}")
+
+
 app = FastAPI(lifespan=lifespan)
 
 
@@ -84,6 +94,8 @@ async def restart():
     try:
         # 设置停止事件
         stop_web_event.set()
+        # 关闭调度器
+        shutdown_scheduler()
 
         await asyncio.sleep(1)  # 等待1秒以确保响应能够发送
         python = sys.executable

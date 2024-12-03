@@ -5,7 +5,7 @@ import uvicorn
 
 from bot import create_bot
 from core import logging, WEB_PORT
-from web import app, stop_web_event
+from web import app, stop_web_event, shutdown_scheduler
 
 
 def run_web():
@@ -55,6 +55,10 @@ async def bot_main():
     await application.stop()
     await application.shutdown()
 
+    # 只需要关闭调度器
+    shutdown_scheduler()
+    await asyncio.sleep(1)
+
 
 def main():
     # 启动web服务作为独立线程
@@ -74,4 +78,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
