@@ -13,7 +13,7 @@ from telegram.ext import (
 )
 
 from core import logging, redis_client
-from core.config import HUGGINGFACE_URL, TELEGRAM_BOT_TOKEN, WEB_PORT, ADMIN_ID
+from core.config import TELEGRAM_BOT_TOKEN, WEB_PORT, ADMIN_ID
 from core.db import get_session
 from model.page import Page
 
@@ -61,11 +61,6 @@ def set_access_granted_user(user_id: int):
 
 
 @handle_redis_error
-def set_huggingface_url(url: str):
-    return redis_client.set("huggingface_url", url)
-
-
-@handle_redis_error
 def set_subscription_base(data: str):
     # cf-aaa;huggingface-bbb
     # remove begin and end space
@@ -79,25 +74,42 @@ def set_subscription_base(data: str):
 
 
 @handle_redis_error
-def set_subscription_path(path: str):
-    return redis_client.set("path", path)
+def set_subscription_path(data: str):
+    # cf-aaa;huggingface-bbb
+    # remove begin and end space
+    data = data.strip().split(";")
+    # [cf-aaa,huggingface-bbb]
+    path = {}
+    for item in data:
+        key, value = item.split("-", 1)
+        path[key] = value
+    return redis_client.hset("subscription_path", mapping=path)
+
+
+@handle_redis_error
+def set_restart_url(url: str):
+    return redis_client.set("restart_url", url)
 
 
 def get_page():
-    result = redis_client.hgetall("page")
-    return ";".join(result.keys())
+    session = next(get_session())
+    # get page
+    page = session.exec(select(Page)).all()
+    return ",".join([p.name for p in page])
 
 
 def get_cf_key():
-    return redis_client.get("cf_key")
+    data = redis_client.get("cf_key")
+    return str(data) if data else ""
 
 
 def get_huggingface_url():
-    return redis_client.get("huggingface_url")
+    data = redis_client.get("huggingface_url")
+    return str(data) if data else ""
 
 
 def get_access_granted_user():
-    return redis_client.smembers("user")
+    return ",".join(redis_client.smembers("user"))
 
 
 def get_huggingface_info():
@@ -106,29 +118,47 @@ def get_huggingface_info():
     if url:
         response = httpx.get(url)
     else:
-        response = httpx.get(HUGGINGFACE_URL)
+        return "Huggingface is not set"
     if response.status_code != 200:
         return f"Failed !!! {response.status_code}: {response.text}"
-    return "Huggingface is running"
+    return f"Huggingface is running. status: {response.status_code}"
 
 
-def get_subscription_base():
-    return redis_client.hgetall("subscription_base")
+def get_subscription_base(str_format=True):
+    data = redis_client.hgetall("subscription_base")
+    if str_format:
+        return "\n".join([f"{key}:{value}" for key, value in data.items()])
+    else:
+        return data
 
 
-def get_subscription_path():
-    return redis_client.get("path")
+def get_subscription_path(str_format=True):
+    data = redis_client.hgetall("subscription_path")
+    if str_format:
+        return "\n".join([f"{key}:{value}" for key, value in data.items()])
+    else:
+        return data
 
 
 def get_subscription():
     subscription = ""
-    base = get_subscription_base()
-    path = get_subscription_path()
+    base = get_subscription_base(False)
+    path = get_subscription_path(False)
     if not base or not path:
         return "No subscription, please set subscription and path."
-    for key, value in base.items():
-        subscription += f"{key}:{value}/{path}\n"
+    base_length, path_length = len(base), len(path)
+    if base_length > path_length:
+        for key, value in path.items():
+            subscription += f"{key}:{base[key]}/{value}\n"
+    elif base_length < path_length:
+        for key, value in base.items():
+            subscription += f"{key}:{value}/{path[key]}\n"
     return subscription
+
+
+def get_restart_url():
+    data = redis_client.get("restart_url")
+    return str(data) if data else ""
 
 
 def has_permission(user_id: int, admin=True, access_granted_user=False):
@@ -146,7 +176,7 @@ def has_permission(user_id: int, admin=True, access_granted_user=False):
 async def not_allow(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await context.bot.send_message(
         chat_id=update.effective_chat.id,
-        text="You are not allowed to use this command. Please contact the administrator",
+        text="You are not allowed to use this command. Please contact the administrator.",
     )
 
 
@@ -164,9 +194,13 @@ async def get_id(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def get_web(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not has_permission(update.effective_chat.id):
+        await not_allow(update, context)
+        return
+
     try:
         response = httpx.get(f"http://localhost:{WEB_PORT}/")
-        text = response.text
+        text = f"status: {response.status_code}"
     except Exception as e:
         logging.error(f"Failed to get web: {e}")
         text = f"Failed to get web: {e}"
@@ -174,6 +208,17 @@ async def get_web(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def stop(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not has_permission(update.effective_chat.id):
+        await not_allow(update, context)
+        return
+
+    url = get_restart_url()
+    if not url:
+        await context.bot.send_message(
+            chat_id=update.effective_chat.id, text="Restart url is not set"
+        )
+        return
+
     try:
         await context.bot.send_message(
             chat_id=update.effective_chat.id, text="Shutting down the bot..."
@@ -222,19 +267,27 @@ async def set(update: Update, context: ContextTypes.DEFAULT_TYPE):
         elif key == "user":
             set_access_granted_user(value)
 
-        elif key == "huggingface":
-            set_huggingface_url(value)
-
         elif key == "subscription":
             set_subscription_base(value)
 
         elif key == "path":
             set_subscription_path(value)
 
+        elif key == "restart":
+            set_restart_url(value)
+
+        else:
+            await context.bot.send_message(
+                chat_id=update.effective_chat.id, text=f"Unknown key: {key}"
+            )
+            return
+
     except RuntimeError as e:
         await context.bot.send_message(
             chat_id=update.effective_chat.id, text=f"Error: {key} {str(e)}"
         )
+        return
+
     await context.bot.send_message(
         chat_id=update.effective_chat.id, text=f"Successfully set {key}"
     )
@@ -254,54 +307,67 @@ async def get(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     command, key = data
-    if key == "all":
-        text = f"""
-page: {get_page()}
-cf_key: {get_cf_key()}
-access_granted: {get_access_granted_user()}
-huggingface_url: {get_huggingface_url()}
-subscription: {get_subscription_base()}
-path: {get_subscription_path()}
-"""
-        await context.bot.send_message(chat_id=update.effective_chat.id, text=text)
-    elif key == "page":
+
+    try:
+        if key == "all":
+            text = "\n".join(
+                [
+                    f"page: {get_page()}",
+                    f"cf_key: {get_cf_key()}",
+                    f"access_granted: {get_access_granted_user()}",
+                    f"subscription_base: {get_subscription_base()}",
+                    f"path: {get_subscription_path()}",
+                    f"subscription: {get_subscription()}",
+                    f"restart_url: {get_restart_url()}",
+                ]
+            )
+
+            await context.bot.send_message(chat_id=update.effective_chat.id, text=text)
+        elif key == "page":
+            await context.bot.send_message(
+                chat_id=update.effective_chat.id,
+                text=f"page: {get_page()}",
+            )
+        elif key == "cf_key":
+            await context.bot.send_message(
+                chat_id=update.effective_chat.id,
+                text=f"cf_key: {get_cf_key()}",
+            )
+        elif key == "user":
+            await context.bot.send_message(
+                chat_id=update.effective_chat.id,
+                text=f"access_granted_user: {get_access_granted_user()}",
+            )
+
+        elif key == "subscription":
+            await context.bot.send_message(
+                chat_id=update.effective_chat.id,
+                text=f"subscription: {get_subscription()}",
+            )
+        elif key == "path":
+            await context.bot.send_message(
+                chat_id=update.effective_chat.id,
+                text=f"path: {get_subscription_path()}",
+            )
+        elif key == "subscription_base":
+            await context.bot.send_message(
+                chat_id=update.effective_chat.id,
+                text=f"subscription_base: {get_subscription_base()}",
+            )
+        elif key == "restart":
+            await context.bot.send_message(
+                chat_id=update.effective_chat.id,
+                text=f"restart_url: {get_restart_url()}",
+            )
+
+        else:
+            await context.bot.send_message(
+                chat_id=update.effective_chat.id, text=f"Unknown key: {key}"
+            )
+    except Exception as e:
+        logging.error(f"Failed to get {key}: {e}")
         await context.bot.send_message(
-            chat_id=update.effective_chat.id,
-            text=f"page: {get_page()}",
-        )
-    elif key == "cf_key":
-        await context.bot.send_message(
-            chat_id=update.effective_chat.id,
-            text=f"cf_key: {get_cf_key()}",
-        )
-    elif key == "user":
-        await context.bot.send_message(
-            chat_id=update.effective_chat.id,
-            text=f"access_granted_user: {get_access_granted_user()}",
-        )
-    elif key == "huggingface":
-        await context.bot.send_message(
-            chat_id=update.effective_chat.id,
-            text=f"huggingface_url: {get_huggingface_url()}",
-        )
-    elif key == "subscription":
-        await context.bot.send_message(
-            chat_id=update.effective_chat.id,
-            text=f"subscription: {get_subscription()}",
-        )
-    elif key == "path":
-        await context.bot.send_message(
-            chat_id=update.effective_chat.id,
-            text=f"path: {get_subscription_path()}",
-        )
-    elif key == "subscription_base":
-        await context.bot.send_message(
-            chat_id=update.effective_chat.id,
-            text=f"subscription_base: {get_subscription_base()}",
-        )
-    else:
-        await context.bot.send_message(
-            chat_id=update.effective_chat.id, text=f"Unknown key: {key}"
+            chat_id=update.effective_chat.id, text=f"Failed to get {key}: {e}"
         )
 
 
@@ -316,15 +382,15 @@ async def help(update: Update, context: ContextTypes.DEFAULT_TYPE):
 /stop - 停止bot
 /getid - 获取telegram id
 /set <key> <value> - 设置配置
-     <key> - page, cf_key, user, huggingface, subscription, path
+     <key> - page, cf_key, user, subscription, path, restart
      page -> name-xxx
      cf_key -> xxx
      user -> user_id
-     huggingface -> url
-     subscription -> cf aaa;huggingface bbb
-     path -> path
+     subscription -> cf-aaa;huggingface-bbb
+     path -> cf-aaa;huggingface-bbb
+     restart -> url
 /get <key> - 获取配置
-     <key> - page, cf_key, user, huggingface, path, subscription_base, subscription
+     <key> - page, cf_key, user, path, subscription_base, subscription, restart
 """
     await context.bot.send_message(chat_id=update.effective_chat.id, text=text)
 
