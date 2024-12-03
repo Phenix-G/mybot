@@ -220,8 +220,12 @@ async def stop(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     try:
+        text = [
+            "Shutting down the bot...",
+            f"Restart link: {url}",
+        ]
         await context.bot.send_message(
-            chat_id=update.effective_chat.id, text="Shutting down the bot..."
+            chat_id=update.effective_chat.id, text="\n".join(text)
         )
     except Exception as e:
         logging.error(f"Failed to send message: {e}")
