@@ -17,7 +17,7 @@ from model.page import Page
 
 stop_web_event = asyncio.Event()
 
-cache_page = ""
+cache_page = "Hello, World!"
 
 
 # 初始化调度器
@@ -74,19 +74,25 @@ app = FastAPI(lifespan=lifespan)
 
 
 @app.get("/")
-async def index(session: Session = Depends(get_session)):
+async def index(name: str | None = None, session: Session = Depends(get_session)):
     global cache_page
-    # get all page
     try:
-        page = session.exec(select(Page)).all()
-        if page:
-            cache_page = random.choice(page).content
-            return Response(content=cache_page, media_type="text/html")
-        else:
-            return Response(content="Hello, World!", media_type="text/html")
+        # 如果指定了name参数，查找对应的页面
+        if name:
+            page = session.exec(select(Page).where(Page.name == name)).first()
+            if page:
+                cache_page = page.content
+                return Response(content=cache_page, media_type="text/html")
+
+        # 如果没有指定name，随机返回一个页面
+        pages = session.exec(select(Page)).all()
+        if pages:
+            cache_page = random.choice(pages).content
+        return Response(content=cache_page, media_type="text/html")
+
     except Exception as e:
         logging.error(f"Error: {e}")
-        return Response(content=f"Error: {e}", media_type="text/html")
+        return Response(content=f"Error: {e}", media_type="text/html", status_code=500)
 
 
 @app.get("/restart")
