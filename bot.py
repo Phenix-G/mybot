@@ -61,29 +61,46 @@ def set_access_granted_user(user_id: int):
 
 
 @handle_redis_error
-def set_subscription_base(data: str):
-    # cf-aaa;huggingface-bbb
+def set_cf_node(data: str):
+    # sub1;sub2
     # remove begin and end space
     data = data.strip().split(";")
-    # [cf-aaa,huggingface-bbb]
-    subscription = {}
-    for item in data:
-        key, value = item.split("-", 1)
-        subscription[key] = value
-    return redis_client.hset("subscription_base", mapping=subscription)
+    # [sub1,sub2]
+    return redis_client.sadd("cf_node", data)
+
+
+def get_cf_node():
+    data = redis_client.smembers("cf_node")
+    result = "\n".join(data)
+    return f"cf_node: [\n{result}\n]"
 
 
 @handle_redis_error
-def set_subscription_path(data: str):
-    # cf-aaa;huggingface-bbb
+def set_huggingface_path(data: str):
+    # cf-aaa;container-bbb
     # remove begin and end space
     data = data.strip().split(";")
-    # [cf-aaa,huggingface-bbb]
+    # [cf-aaa,container-bbb]
+
     path = {}
     for item in data:
         key, value = item.split("-", 1)
         path[key] = value
-    return redis_client.hset("subscription_path", mapping=path)
+    return redis_client.hset("path", mapping=path)
+
+
+def get_huggingface_path(str_format=True):
+    try:
+        if str_format:
+            data = redis_client.hgetall("path")
+            result = "\n".join([f"{key}=>{value}" for key, value in data.items()])
+            return f"path: [\n{result}\n]"
+
+        else:
+            return redis_client.hgetall("path")
+    except Exception as e:
+        logging.error(f"Failed to get huggingface path: {e}")
+        return "path:path is not set"
 
 
 @handle_redis_error
@@ -91,74 +108,113 @@ def set_restart_url(url: str):
     return redis_client.set("restart_url", url)
 
 
+@handle_redis_error
+def set_huggingface_url(url: str):
+    return redis_client.set("huggingface_url", url)
+
+
+@handle_redis_error
+def set_node(node: str):
+    # node-xxx
+    # remove begin and end space
+    node = node.strip().split("-", 1)
+    return redis_client.hset("node", mapping={node[0]: node[1]})
+
+
+def get_node():
+    node = redis_client.hgetall("node")
+    result = "\n".join([f"{key}=>{value}" for key, value in node.items()])
+    return f"node: [\n{result}\n]"
+
+
 def get_page():
     session = next(get_session())
     # get page
     page = session.exec(select(Page)).all()
-    return ",".join([p.name for p in page])
+    result = ";".join([f"{p.name}" for p in page])
+    return f"page: {result}"
 
 
 def get_cf_key():
     data = redis_client.get("cf_key")
-    return str(data) if data else ""
+    result = str(data) if data else ""
+    return f"cf_key: {result}"
 
 
 def get_huggingface_url():
     data = redis_client.get("huggingface_url")
-    return str(data) if data else ""
+    result = str(data) if data else ""
+    return f"huggingface_url: {result}"
 
 
 def get_access_granted_user():
-    return ",".join(redis_client.smembers("user"))
+    data = redis_client.smembers("user")
+    result = ";".join(data)
+    return f"user: {result}"
 
 
-def get_huggingface_info():
-    url = redis_client.get("huggingface_url")
+def get_huggingface_status():
+    url = get_huggingface_url()
 
     if url:
         response = httpx.get(url)
     else:
-        return "Huggingface is not set"
+        return "Huggingface url is not set"
     if response.status_code != 200:
         return f"Failed !!! {response.status_code}: {response.text}"
     return f"Huggingface is running. status: {response.status_code}"
 
 
-def get_subscription_base(str_format=True):
-    data = redis_client.hgetall("subscription_base")
-    if str_format:
-        return "\n".join([f"{key}:{value}" for key, value in data.items()])
-    else:
-        return data
+# def get_subscription_base(str_format=True):
+#     data = redis_client.hgetall("subscription_base")
+#     if str_format:
+#         return "\n".join([f"{key}:{value}" for key, value in data.items()])
+#     else:
+#         return data
 
 
-def get_subscription_path(str_format=True):
-    data = redis_client.hgetall("subscription_path")
-    if str_format:
-        return "\n".join([f"{key}:{value}" for key, value in data.items()])
-    else:
-        return data
+# def get_subscription_path(str_format=True):
+#     data = redis_client.hgetall("subscription_path")
+#     if str_format:
+#         return "\n".join([f"{key}:{value}" for key, value in data.items()])
+#     else:
+#         return data
 
 
 def get_subscription():
-    subscription = ""
-    base = get_subscription_base(False)
-    path = get_subscription_path(False)
-    if not base or not path:
-        return "No subscription, please set subscription and path."
-    base_length, path_length = len(base), len(path)
-    if base_length > path_length:
-        for key, value in path.items():
-            subscription += f"{key}:{base[key]}/{value}\n"
-    elif base_length < path_length:
-        for key, value in base.items():
-            subscription += f"{key}:{value}/{path[key]}\n"
-    return subscription
+    url = get_huggingface_url()
+    if not url:
+        return "Huggingface url is not set"
+
+    path = get_huggingface_path(False)
+
+    if isinstance(path, str):
+        return path
+
+    if path.get("cf"):
+        cf_subscription = f'{url}/{path["cf"]}'
+    else:
+        cf_subscription = ""
+
+    if path.get("container"):
+        container_subscription = f'{url}/{path["container"]}'
+    else:
+        container_subscription = ""
+
+    if cf_subscription and container_subscription:
+        return f"subscription: [\ncf=>{cf_subscription}\ncontainer=>{container_subscription}\n]"
+    elif cf_subscription:
+        return f"subscription: \ncf=>{cf_subscription}"
+    elif container_subscription:
+        return f"subscription: \ncontainer=>{container_subscription}"
+    else:
+        return "subscription: \nNo subscription, please set huggingface url and path."
 
 
 def get_restart_url():
     data = redis_client.get("restart_url")
-    return str(data) if data else ""
+    result = str(data) if data else ""
+    return f"restart_url: {result}"
 
 
 def has_permission(user_id: int, admin=True, access_granted_user=False):
@@ -271,11 +327,17 @@ async def set(update: Update, context: ContextTypes.DEFAULT_TYPE):
         elif key == "user":
             set_access_granted_user(value)
 
-        elif key == "subscription":
-            set_subscription_base(value)
+        elif key == "cf_node":
+            set_cf_node(value)
+
+        elif key == "huggingface":
+            set_huggingface_url(value)
 
         elif key == "path":
-            set_subscription_path(value)
+            set_huggingface_path(value)
+
+        elif key == "node":
+            set_node(value)
 
         elif key == "restart":
             set_restart_url(value)
@@ -316,13 +378,15 @@ async def get(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if key == "all":
             text = "\n".join(
                 [
-                    f"page: {get_page()}",
-                    f"cf_key: {get_cf_key()}",
-                    f"access_granted: {get_access_granted_user()}",
-                    f"subscription_base: {get_subscription_base()}",
-                    f"path: {get_subscription_path()}",
-                    f"subscription: {get_subscription()}",
-                    f"restart_url: {get_restart_url()}",
+                    get_page(),
+                    get_cf_key(),
+                    get_access_granted_user(),
+                    get_cf_node(),
+                    get_huggingface_url(),
+                    get_huggingface_path(),
+                    get_node(),
+                    get_subscription(),
+                    get_restart_url(),
                 ]
             )
 
@@ -330,38 +394,47 @@ async def get(update: Update, context: ContextTypes.DEFAULT_TYPE):
         elif key == "page":
             await context.bot.send_message(
                 chat_id=update.effective_chat.id,
-                text=f"page: {get_page()}",
+                text=get_page(),
             )
         elif key == "cf_key":
             await context.bot.send_message(
                 chat_id=update.effective_chat.id,
-                text=f"cf_key: {get_cf_key()}",
+                text=get_cf_key(),
             )
         elif key == "user":
             await context.bot.send_message(
                 chat_id=update.effective_chat.id,
-                text=f"access_granted_user: {get_access_granted_user()}",
+                text=get_access_granted_user(),
+            )
+
+        elif key == "cf_node":
+            await context.bot.send_message(
+                chat_id=update.effective_chat.id,
+                text=get_cf_node(),
+            )
+
+        elif key == "huggingface":
+            await context.bot.send_message(
+                chat_id=update.effective_chat.id,
+                text=get_huggingface_url(),
+            )
+        elif key == "node":
+            await context.bot.send_message(
+                chat_id=update.effective_chat.id, text=get_node()
+            )
+        elif key == "path":
+            await context.bot.send_message(
+                chat_id=update.effective_chat.id, text=get_huggingface_path()
             )
 
         elif key == "subscription":
             await context.bot.send_message(
-                chat_id=update.effective_chat.id,
-                text=f"subscription: {get_subscription()}",
+                chat_id=update.effective_chat.id, text=get_subscription()
             )
-        elif key == "path":
-            await context.bot.send_message(
-                chat_id=update.effective_chat.id,
-                text=f"path: {get_subscription_path()}",
-            )
-        elif key == "subscription_base":
-            await context.bot.send_message(
-                chat_id=update.effective_chat.id,
-                text=f"subscription_base: {get_subscription_base()}",
-            )
+
         elif key == "restart":
             await context.bot.send_message(
-                chat_id=update.effective_chat.id,
-                text=f"restart_url: {get_restart_url()}",
+                chat_id=update.effective_chat.id, text=get_restart_url()
             )
 
         else:
@@ -386,25 +459,28 @@ async def help(update: Update, context: ContextTypes.DEFAULT_TYPE):
 /stop - 停止bot
 /getid - 获取telegram id
 /set <key> <value> - 设置配置
-     <key> - page, cf_key, user, subscription, path, restart
+     <key> - page, cf_key, user, cf_node, huggingface, path, restart
      page -> name-xxx
      cf_key -> xxx
      user -> user_id
-     subscription -> cf-aaa;huggingface-bbb
-     path -> cf-aaa;huggingface-bbb
+     cf_node -> sub1;sub2
+     huggingface -> url
+     path -> cf-aaa;container-bbb
      restart -> url
 /get <key> - 获取配置
-     <key> - page, cf_key, user, path, subscription_base, subscription, restart
+     <key> - all, page, cf_key, user, cf_node, huggingface, path, restart, subscription
+/status - 获取huggingface状态
+
 """
     await context.bot.send_message(chat_id=update.effective_chat.id, text=text)
 
 
-async def huggingface(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def status(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not has_permission(update.effective_chat.id):
         await not_allow(update, context)
         return
 
-    huggingface_info = get_huggingface_info()
+    huggingface_info = get_huggingface_status()
     await context.bot.send_message(
         chat_id=update.effective_chat.id, text=huggingface_info
     )
@@ -424,7 +500,7 @@ def create_bot(stop_event=None):
     application.add_handler(CommandHandler("set", set))
     application.add_handler(CommandHandler("get", get))
     application.add_handler(CommandHandler("help", help))
-    application.add_handler(CommandHandler("huggingface", huggingface))
+    application.add_handler(CommandHandler("status", status))
     application.add_handler(MessageHandler(filters.COMMAND, unknown))
 
     return application
