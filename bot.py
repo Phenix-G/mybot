@@ -1,5 +1,6 @@
 import functools
 from typing import Callable, Any
+import uuid
 
 import httpx
 from sqlmodel import select
@@ -187,10 +188,10 @@ def get_subscription():
 
 def get_restart_url():
     data = redis_client.get("web_url")
-    uuid = str(uuid.uuid4())
-    redis_client.set("restart_uuid", f"{uuid}")
+    restart_uuid = uuid.uuid4()
+    redis_client.set("restart_uuid", f"{restart_uuid}")
     result = str(data) if data else ""
-    return f"restart_url: {result}/restart?uuid={uuid}"
+    return f"restart_url: {result}/restart?uuid={restart_uuid}"
 
 
 def has_permission(user_id: int, admin=True, access_granted_user=False):
