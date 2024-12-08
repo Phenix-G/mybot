@@ -1,5 +1,8 @@
 import os
 
+from dotenv import load_dotenv
+load_dotenv()
+
 # Debug模式
 DEBUG = os.environ.get("DEBUG", False)
 

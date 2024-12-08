@@ -1,7 +1,18 @@
-# For more information, please refer to https://aka.ms/vscode-docker-python
+# Build stage
+FROM python:3.12-alpine as builder
+
+WORKDIR /app
+
+# Copy only the requirements file
+COPY requirements.txt .
+
+# Install dependencies
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Runtime stage
 FROM python:3.12-alpine
 
-# EXPOSE 8000
+WORKDIR /app
 
 # Keeps Python from generating .pyc files in the container
 ENV PYTHONDONTWRITEBYTECODE=1
@@ -9,26 +20,18 @@ ENV PYTHONDONTWRITEBYTECODE=1
 # Turns off buffering for easier container logging
 ENV PYTHONUNBUFFERED=1
 
-# Install system dependencies
-# RUN apk update && apk add --no-cache \
-#     mariadb-connector-c-dev \
-#     build-base \
-#     pkgconfig
-# Install pip requirements
-COPY requirements.txt .
-RUN python -m pip install -r requirements.txt
+# Copy dependencies from builder
+COPY --from=builder /usr/local/lib/python3.12/site-packages/ /usr/local/lib/python3.12/site-packages/
+COPY --from=builder /usr/local/bin/ /usr/local/bin/
 
+# Install netcat for database check
+# RUN apk add --no-cache netcat-openbsd
 
-WORKDIR /app
-COPY . /app
+# Copy application code
+COPY . .
 
-# Creates a non-root user with an explicit UID and adds permission to access the /app folder
-# For more info, please refer to https://aka.ms/vscode-docker-python-configure-containers
-# RUN adduser -u 5678 --disabled-password --gecos "" appuser && chown -R appuser /app
-# USER appuser
+# Make entrypoint script executable
+RUN chmod +x /app/scripts/entrypoint.sh
 
-# database migrate
-RUN alembic upgrade head
-
-# During debugging, this entry point will be overridden. For more information, please refer to https://aka.ms/vscode-docker-python-debug
-# CMD ["gunicorn", "--bind", "0.0.0.0:8000", "-k", "uvicorn.workers.UvicornWorker", "fastapi:app"]
+# Start the application
+CMD ["/app/scripts/entrypoint.sh"]

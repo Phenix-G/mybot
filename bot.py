@@ -40,6 +40,7 @@ def set_page(data: str):
     session = next(get_session())
     # get page
     page = session.exec(select(Page).where(Page.name == data[0])).first()
+    redis_client.hset("page", mapping={data[0]: data[1]})
 
     if page:
         page.content = data[1]
@@ -48,11 +49,6 @@ def set_page(data: str):
         session.add(page)
 
     session.commit()
-
-
-@handle_redis_error
-def set_cf_key(key: str):
-    return redis_client.set("cf_key", key)
 
 
 @handle_redis_error
@@ -104,8 +100,8 @@ def get_huggingface_path(str_format=True):
 
 
 @handle_redis_error
-def set_restart_url(url: str):
-    return redis_client.set("restart_url", url)
+def set_web_url(url: str):
+    return redis_client.set("web_url", url)
 
 
 @handle_redis_error
@@ -135,12 +131,6 @@ def get_page():
     return f"page: {result}"
 
 
-def get_cf_key():
-    data = redis_client.get("cf_key")
-    result = str(data) if data else ""
-    return f"cf_key: {result}"
-
-
 def get_huggingface_url():
     data = redis_client.get("huggingface_url")
     result = str(data) if data else ""
@@ -163,22 +153,6 @@ def get_huggingface_status():
     if response.status_code != 200:
         return f"Failed !!! {response.status_code}: {response.text}"
     return f"Huggingface is running. status: {response.status_code}"
-
-
-# def get_subscription_base(str_format=True):
-#     data = redis_client.hgetall("subscription_base")
-#     if str_format:
-#         return "\n".join([f"{key}:{value}" for key, value in data.items()])
-#     else:
-#         return data
-
-
-# def get_subscription_path(str_format=True):
-#     data = redis_client.hgetall("subscription_path")
-#     if str_format:
-#         return "\n".join([f"{key}:{value}" for key, value in data.items()])
-#     else:
-#         return data
 
 
 def get_subscription():
@@ -212,9 +186,11 @@ def get_subscription():
 
 
 def get_restart_url():
-    data = redis_client.get("restart_url")
+    data = redis_client.get("web_url")
+    uuid = str(uuid.uuid4())
+    redis_client.set("restart_uuid", f"{uuid}")
     result = str(data) if data else ""
-    return f"restart_url: {result}"
+    return f"restart_url: {result}/restart?uuid={uuid}"
 
 
 def has_permission(user_id: int, admin=True, access_granted_user=False):
@@ -321,9 +297,6 @@ async def set(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if key == "page":
             set_page(value)
 
-        elif key == "cf_key":
-            set_cf_key(value)
-
         elif key == "user":
             set_access_granted_user(value)
 
@@ -339,8 +312,8 @@ async def set(update: Update, context: ContextTypes.DEFAULT_TYPE):
         elif key == "node":
             set_node(value)
 
-        elif key == "restart":
-            set_restart_url(value)
+        elif key == "web":
+            set_web_url(value)
 
         else:
             await context.bot.send_message(
@@ -379,7 +352,6 @@ async def get(update: Update, context: ContextTypes.DEFAULT_TYPE):
             text = "\n".join(
                 [
                     get_page(),
-                    get_cf_key(),
                     get_access_granted_user(),
                     get_cf_node(),
                     get_huggingface_url(),
@@ -396,11 +368,7 @@ async def get(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 chat_id=update.effective_chat.id,
                 text=get_page(),
             )
-        elif key == "cf_key":
-            await context.bot.send_message(
-                chat_id=update.effective_chat.id,
-                text=get_cf_key(),
-            )
+
         elif key == "user":
             await context.bot.send_message(
                 chat_id=update.effective_chat.id,
@@ -432,7 +400,7 @@ async def get(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 chat_id=update.effective_chat.id, text=get_subscription()
             )
 
-        elif key == "restart":
+        elif key == "web":
             await context.bot.send_message(
                 chat_id=update.effective_chat.id, text=get_restart_url()
             )
@@ -459,16 +427,15 @@ async def help(update: Update, context: ContextTypes.DEFAULT_TYPE):
 /stop - 停止bot
 /getid - 获取telegram id
 /set <key> <value> - 设置配置
-     <key> - page, cf_key, user, cf_node, huggingface, path, restart
+     <key> - page,  user, cf_node, huggingface, path, web
      page -> name-xxx
-     cf_key -> xxx
      user -> user_id
      cf_node -> sub1;sub2
      huggingface -> url
      path -> cf-aaa;container-bbb
-     restart -> url
+     web -> url
 /get <key> - 获取配置
-     <key> - all, page, cf_key, user, cf_node, huggingface, path, restart, subscription
+     <key> - all, page, user, cf_node, huggingface, path, web, subscription
 /status - 获取huggingface状态
 
 """
