@@ -28,3 +28,4 @@ starlette==0.41.3
 typing_extensions==4.12.2
 tzlocal==5.2
 uvicorn==0.32.1
+pytz==2024.2

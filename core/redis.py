@@ -2,7 +2,6 @@ from typing import Optional
 import redis
 from redis.connection import SSLConnection
 
-from core.logger import logging
 from core.config import (
     DEBUG,
     REDIS_HOST,
@@ -10,6 +9,7 @@ from core.config import (
     REDIS_PROTOCOL,
     REDIS_PASSWORD,
 )
+from core.exceptions import handle_exception
 
 
 class RedisClient:
@@ -40,18 +40,22 @@ class RedisClient:
             try:
                 cls._pool = redis.ConnectionPool(**redis_config)
             except Exception as e:
-                logging.error(f"Failed to create Redis pool: {e}")
+                handle_exception(
+                    f"Failed to create Redis pool: {e}", source="create_redis_pool"
+                )
                 return None
 
         try:
             return redis.Redis(connection_pool=cls._pool)
         except Exception as e:
-            logging.error(f"Failed to create Redis client: {e}")
+            handle_exception(
+                f"Failed to create Redis client: {e}", source="create_redis_client"
+            )
             return None
 
     @classmethod
     def close(cls):
-        """关闭Redis连接"""
+        """Close Redis connection"""
         if cls._instance:
             cls._instance.close()
             cls._instance = None

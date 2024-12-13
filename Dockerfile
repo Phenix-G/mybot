@@ -14,6 +14,11 @@ FROM python:3.12-alpine
 
 WORKDIR /app
 
+# Install tzdata and set timezone
+RUN apk add --no-cache tzdata && \
+    cp /usr/share/zoneinfo/Asia/Shanghai /etc/localtime && \
+    echo "Asia/Shanghai" > /etc/timezone
+
 # Keeps Python from generating .pyc files in the container
 ENV PYTHONDONTWRITEBYTECODE=1
 
@@ -25,13 +30,13 @@ COPY --from=builder /usr/local/lib/python3.12/site-packages/ /usr/local/lib/pyth
 COPY --from=builder /usr/local/bin/ /usr/local/bin/
 
 # Install netcat for database check
-# RUN apk add --no-cache netcat-openbsd
+RUN apk add --no-cache netcat-openbsd
 
 # Copy application code
 COPY . .
 
 # Make entrypoint script executable
-RUN chmod +x /app/scripts/entrypoint.sh
+RUN chmod +x /app/entrypoint.sh
 
 # Start the application
-CMD ["/app/scripts/entrypoint.sh"]
+CMD ["/app/entrypoint.sh"]
