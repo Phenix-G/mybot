@@ -41,7 +41,9 @@ async def stop(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 f"Restart ==> {web_url}/restart?uuid={restart_uuid} <== ",
             ]
             await context.bot.send_message(
-                chat_id=update.effective_chat.id, text="\n".join(text)
+                chat_id=update.effective_chat.id,
+                text="\n".join(text),
+                disable_web_page_preview=True,  # disable web page preview
             )
             context.application.stop_event.set()
         except Exception as e:
