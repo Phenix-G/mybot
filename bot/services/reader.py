@@ -33,9 +33,10 @@ def get_all_config():
     return "\n".join(
         [
             get_access_granted_users(),
-            get_cf_node(),
             get_path(),
+            get_cf_node(),
             get_alive_url(),
+            get_node(),
             f"web: {get_deploy_url()}",
         ]
     )
@@ -90,3 +91,10 @@ async def get_web_status() -> str:
     except Exception as e:
         handle_exception(e, message="Failed to get web status", source="web")
         return f"Failed to get web status: {str(e)}"
+
+
+async def get_node():
+    """Get nodes"""
+    data = redis_client.hgetall("node")
+    result = "\n".join([f"{key}=>{value}" for key, value in data.items()])
+    return f"node: [\n{result}\n]"

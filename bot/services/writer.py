@@ -30,3 +30,14 @@ async def set_alive_url(url: list):
 async def set_deploy_url(url: str):
     """Set deploy URL"""
     return redis_client.set("deploy_url", url)
+
+
+async def set_node(data: str):
+    """Set nodes"""
+    # name-node;name-node
+    data = data.strip().split(";")
+    nodes = {}
+    for item in data:
+        key, value = item.split("-", 1)
+        nodes[key] = value
+    return redis_client.hset("node", mapping=nodes)

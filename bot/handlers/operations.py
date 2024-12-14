@@ -10,11 +10,13 @@ from bot.services.reader import (
     get_access_granted_users,
     get_cf_node,
     get_deploy_url,
+    get_node,
     get_path,
 )
 from bot.services.writer import (
     set_access_granted_user,
     set_cf_node,
+    set_node,
     set_path,
     set_deploy_url,
     set_alive_url,
@@ -47,6 +49,8 @@ async def set_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await set_path(value)
         elif key == "web":
             await set_deploy_url(value)
+        elif key == "node":
+            await set_node(value)
         else:
             await context.bot.send_message(
                 chat_id=update.effective_chat.id, text=f"Unknown key: {key}"
@@ -88,6 +92,8 @@ async def get_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             text = get_path()
         elif key == "web":
             text = get_deploy_url()
+        elif key == "node":
+            text = get_node()
         else:
             text = f"Unknown key: {key}"
 
@@ -109,14 +115,15 @@ Available commands:
 /stop - Stop the bot
 /getid - Get your Telegram ID
 /set <key> <value> - Set configuration
-    Keys => page, user, cf_node, alive, path, web
+    Keys => page, user, cf_node, alive, path, web, node
     page: web page => name-content  /  name-url
     user: grant access => user_id
     cf_node: cf node url => url;url
+    node: node => name-node;name-node
     alive: keep web alive => url;url
     path: subscription path => cf-aaa;container-bbb
     web: deploy url => url
 /get <key> - Get configuration
-    Keys: all, page, user, cf_node, alive, path, web
+    Keys: all, page, user, cf_node, alive, path, web, node
 """
     await context.bot.send_message(chat_id=update.effective_chat.id, text=text)
