@@ -28,18 +28,18 @@ def get_access_granted_users():
     return f"user: {result}"
 
 
-def get_all_config():
+async def get_all_config():
     """Get all configurations"""
-    return "\n".join(
-        [
-            get_access_granted_users(),
-            get_path(),
-            get_cf_node(),
-            get_alive_url(),
-            get_node(),
-            f"web: {get_deploy_url()}",
-        ]
-    )
+    user = get_access_granted_users()
+    path = get_path()
+    cf_node = get_cf_node()
+    alive_url = get_alive_url()
+    node = await get_node()
+    web = f"web: {get_deploy_url()}"
+    dashboard = await get_dashboard()
+    return f'{user}\n{path}\n{cf_node}\n{alive_url}\n{node}\n{web}\n{dashboard}'
+        
+
 
 
 def get_alive_url():
@@ -96,5 +96,11 @@ async def get_web_status() -> str:
 async def get_node():
     """Get nodes"""
     data = redis_client.hgetall("node")
-    result = "\n".join([f"{key}=>{value}" for key, value in data.items()])
+    result = "=".join([f"{key}" for key, value in data.items()])
     return f"node: [\n{result}\n]"
+
+
+async def get_dashboard():
+    """Get dashboard"""
+    data = redis_client.get("dashboard")
+    return f"dashboard: {data}"

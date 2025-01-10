@@ -41,3 +41,8 @@ async def set_node(data: str):
         key, value = item.split("-", 1)
         nodes[key] = value
     return redis_client.hset("node", mapping=nodes)
+
+
+async def set_dashboard(data: str):
+    """Set dashboard"""
+    return redis_client.set("dashboard", data)

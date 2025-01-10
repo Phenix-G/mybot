@@ -42,9 +42,11 @@ async def lifespan(app: FastAPI):
 
 
 def keep_web_alive():
+    """Keep web service alive by periodic health checks"""
     # Check stop event
     if stop_web_event.is_set():
         return
+
     try:
         httpx.get(f"http://127.0.0.1:{WEB_PORT}/")
     except Exception as e:
@@ -163,3 +165,38 @@ async def restart(uuid: str):
         raise HTTPException(status_code=500, detail=f"Failed to restart: {str(e)}")
     finally:
         restart_lock.release()
+
+
+@app.get("/node")
+async def get_node():
+    """Get node"""
+    result = redis_client.hgetall("node")
+    return JSONResponse({"status": "success", "result": result})
+
+
+@app.post("/node")
+async def create_node(name: str, node: str):
+    """Set node"""
+    result = redis_client.hset("node", mapping={name: node})
+    return JSONResponse({"status": "success", "result": result})
+
+
+@app.put("/node")
+async def update_node(name: str, node: str):
+    """Update node"""
+    result = redis_client.hset("node", mapping={name: node})
+    return JSONResponse({"status": "success", "result": result})
+
+
+@app.delete("/node")
+async def delete_node(name: str):
+    """Delete node"""
+    result = redis_client.hdel("node", name)
+    return JSONResponse({"status": "success", "result": result})
+
+
+@app.get("/page")
+async def get_page():
+    """Get page"""
+    result = redis_client.hgetall("page")
+    return JSONResponse({"status": "success", "result": result})
