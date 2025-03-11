@@ -133,6 +133,22 @@ async def telegram(bot_token: str, chat_id: str, message: str):
     return JSONResponse(content=response.json())
 
 
+@app.get("/alive")
+async def alive(urls: list[str]):
+    """Check if the web service is alive"""
+    results = []
+    for url in urls:
+        try:
+            response = httpx.get(url)
+            if response.status_code != 200:
+                results.append({f"{url}": "failed", "message": str(e)})
+            else:
+                results.append({f"{url}": "success"})
+        except Exception as e:
+            results.append({f"{url}": "failed", "message": str(e)})
+    return JSONResponse(content=results)
+
+
 @app.get("/restart")
 async def restart(uuid: str):
     """Restart the program"""
